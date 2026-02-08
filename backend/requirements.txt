@@ -1,38 +1,30 @@
-# Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+# Core
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+pydantic>=2.5.3
+python-multipart>=0.0.6
 
-# Gemini AI
-google-generativeai==0.3.2
+# AI/ML
+google-generativeai>=0.3.2
 
-# HTTP & Async
-httpx==0.26.0
-aiohttp==3.9.1
-aiofiles==25.1.0
+# HTTP
+httpx>=0.26.0
+aiohttp>=3.9.1
 
-# Platform APIs
-praw==7.7.1  # Reddit
-tweepy==4.14.0  # Twitter/X (if using API)
+# Async
+aiofiles>=25.1.0
 
 # Media Processing
-Pillow==10.2.0
-pytesseract==0.3.10  # OCR
+Pillow>=10.2.0
+pytesseract>=0.3.10
 
-# Utilities
-python-dotenv==1.0.0
-python-multipart==0.0.6
+# Platform APIs
+praw>=7.7.1
 
-# Validation & Serialization
-jsonschema==4.20.0
+# Caching (optional for Redis)
+redis>=5.0.1
 
-# Caching (optional)
-redis==5.0.1
-
-# Development
-pytest==7.4.4
-pytest-asyncio==0.23.3
-black==23.12.1
-ruff==0.1.11
-mypy==1.8.0
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.23.3
