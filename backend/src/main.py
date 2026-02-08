@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from src.core.schemas import SafetyAnalysisResult
 from src.services.ingestion_pipeline import IngestionPipeline
-from src.services.gemini_service import GeminiService
+from src.services.gemini_service import GeminiService, GeminiRateLimitError
 from src.adapters.registry import adapter_registry
 from src.adapters.reddit_adapter import RedditAdapter
 from src.adapters.twitter_adapter import TwitterAdapter
@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
     })
     adapter_registry.register(twitter_adapter)
     
-    print(f"Registered {len(adapter_registry.adapters)} adapters")
+    print(f"Registered {len(adapter_registry.list_platforms())} adapters")
     print(f"Cache: {cache_type}")
     print("SafetyCheck API ready")
     
@@ -180,15 +180,16 @@ async def analyze_content(request: AnalysisRequest):
         if not metrics.check_rate_limit():
             raise HTTPException(429, "Rate limit exceeded")
         
+
+
         # Ingest content
         if request.url:
             post = await pipeline.ingest_from_url(
                 url=request.url,
-                platform_hint=request.platform_hint,
             )
         else:
             post = await pipeline.ingest_from_text(
-                text=request.text,
+                raw_text=request.text,
                 platform_hint=request.platform_hint,
             )
         
@@ -206,6 +207,8 @@ async def analyze_content(request: AnalysisRequest):
     
     except HTTPException:
         raise
+    except GeminiRateLimitError as e:
+        raise HTTPException(429, f"AI Service Rate Limit: {str(e)}")
     except Exception as e:
         print(f"Analysis error: {e}")
         import traceback

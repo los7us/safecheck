@@ -49,10 +49,15 @@ class GeminiAPIError(GeminiServiceException):
     pass
 
 
+class GeminiRateLimitError(GeminiServiceException):
+    """Raised when Gemini API rate limit exceeded"""
+    pass
+
+
 class GeminiService:
     """Service for interacting with Gemini API"""
     
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-pro"):
+    def __init__(self, api_key: str, model_name: str = "gemini-flash-latest"):
         """
         Initialize Gemini service.
         
@@ -68,7 +73,7 @@ class GeminiService:
             temperature=0.3,
             top_p=0.95,
             top_k=40,
-            max_output_tokens=2048,
+            max_output_tokens=8192,
         )
         
         self.model = genai.GenerativeModel(
@@ -163,6 +168,9 @@ class GeminiService:
             response = await self.model.generate_content_async(prompt)
             return response.text
         except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg:
+                raise GeminiRateLimitError(f"Gemini API rate limit exceeded: {error_msg}")
             raise GeminiAPIError(f"Gemini API call failed: {e}")
     
     def _parse_response(self, response_text: str) -> SafetyAnalysisResult:

@@ -88,6 +88,7 @@ class IngestionPipeline:
         if not adapter:
             # Fallback to first available adapter
             platforms = adapter_registry.list_platforms()
+
             if platforms:
                 adapter = adapter_registry.get_adapter(platforms[0])
         

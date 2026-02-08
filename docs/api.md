@@ -38,7 +38,7 @@ Analyze content for safety risks.
       }]
     }],
     "analysis_timestamp": "2025-02-08T12:00:00Z",
-    "model_version": "gemini-1.5-pro"
+    "model_version": "gemini-flash-latest"
   }
 }
 ```

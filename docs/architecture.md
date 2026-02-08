@@ -64,6 +64,6 @@
 |-------|-----------|
 | Frontend | Next.js 14, TypeScript, Tailwind |
 | Backend | FastAPI, Pydantic |
-| AI | Google Gemini 1.5 Pro |
+| AI | Google Gemini Flash (Latest) |
 | Cache | Redis / Memory |
 | Media | Tesseract OCR |

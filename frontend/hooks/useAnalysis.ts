@@ -8,7 +8,7 @@
 
 import { useState, useCallback } from 'react';
 import type { SafetyAnalysisResult } from '@/lib/schemas';
-import { apiClient, type AnalysisRequest } from '@/lib/api/client';
+import { apiClient, APIError, type AnalysisRequest } from '@/lib/api/client';
 
 export interface AnalysisState {
   isLoading: boolean;
@@ -62,10 +62,16 @@ export function useAnalysis() {
     } catch (error) {
       console.error('Analysis error:', error);
       
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      if (error instanceof APIError && error.statusCode === 429) {
+        errorMessage = 'Usage limit exceeded (free tier). Please wait a minute and try again.';
+      }
+      
       setState({
         isLoading: false,
         result: null,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: errorMessage,
       });
     }
   }, []);

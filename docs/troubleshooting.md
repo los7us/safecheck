@@ -12,7 +12,7 @@ pip install -r requirements.txt
 
 **GEMINI_API_KEY not set**
 ```bash
-cp .env.example .env
+cp .env.template .env
 # Edit .env and add your API key
 ```
 
