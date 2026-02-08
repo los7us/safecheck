@@ -21,6 +21,7 @@ pytesseract>=0.3.10
 
 # Platform APIs
 praw>=7.7.1
+tweepy>=4.14.0
 
 # Caching (optional for Redis)
 redis>=5.0.1

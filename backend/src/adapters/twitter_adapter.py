@@ -92,7 +92,11 @@ class TwitterAdapter(PlatformAdapter):
             raise URLParseError(f"This adapter cannot handle URL: {url}")
         
         if self.use_api:
-            return await self._extract_via_api(url)
+            try:
+                return await self._extract_via_api(url)
+            except Exception as e:
+                print(f"Twitter API failed, falling back to scraping: {e}")
+                return await self._extract_via_scraping(url)
         else:
             return await self._extract_via_scraping(url)
     

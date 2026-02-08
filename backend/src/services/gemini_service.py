@@ -24,12 +24,10 @@ from src.core.schemas import (
     ClaimVerdict,
 )
 from src.services.gemini_prompts import (
-    SYSTEM_PROMPT,
     build_analysis_prompt,
     build_author_context,
     build_engagement_context,
     build_media_summary,
-    RETRY_PROMPT,
 )
 import google.generativeai as genai
 
@@ -74,6 +72,7 @@ class GeminiService:
             top_p=0.95,
             top_k=40,
             max_output_tokens=8192,
+            response_mime_type="application/json",
         )
         
         self.model = genai.GenerativeModel(
@@ -120,7 +119,7 @@ class GeminiService:
                 
             except (json.JSONDecodeError, ValueError) as e:
                 if attempt < max_retries:
-                    prompt = RETRY_PROMPT
+                    # Retry with same prompt, model might fix itself
                     continue
                 raise GeminiParseError(f"Failed to parse Gemini response after {max_retries} retries: {e}")
         
@@ -165,8 +164,15 @@ class GeminiService:
     async def _call_gemini(self, prompt: str) -> str:
         """Make actual API call to Gemini"""
         try:
+            # Generate content
             response = await self.model.generate_content_async(prompt)
+            
+            # Check for block reasons
+            if response.prompt_feedback.block_reason:
+                raise GeminiServiceException(f"Prompt blocked: {response.prompt_feedback.block_reason}")
+                
             return response.text
+            
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg:
@@ -186,6 +192,7 @@ class GeminiService:
         text = text.strip()
         
         # Parse JSON
+        print(f"DEBUG: Gemini raw response: {text}")
         data = json.loads(text)
         
         # Build fact checks
@@ -199,12 +206,16 @@ class GeminiService:
                 )
                 for c in fc_data.get("citations", [])
             ]
-            fact_checks.append(FactCheck(
-                claim=fc_data["claim"],
-                verdict=ClaimVerdict(fc_data["verdict"]),
-                explanation=fc_data["explanation"],
-                citations=citations
-            ))
+            try:
+                fact_checks.append(FactCheck(
+                    claim=fc_data.get("claim", fc_data.get("claim_text", "Unknown Claim")), # Fallback to claim_text
+                    verdict=ClaimVerdict(fc_data["verdict"]),
+                    explanation=fc_data["explanation"],
+                    citations=citations
+                ))
+            except KeyError as e:
+                print(f"ERROR: Missing key in fact check data: {e}. Data: {fc_data}")
+                continue # Skip malformed fact check
         
         # Build result
         return SafetyAnalysisResult(
