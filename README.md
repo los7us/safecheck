@@ -1,57 +1,85 @@
-# SafetyCheck - Multimodal Social Media Safety Analysis Platform
+# SafetyCheck
 
-## Objective
-A platform-neutral, multimodal safety analysis system that evaluates public social media posts for potential scam or harmful content.
+> AI-powered safety analysis for social media content
 
-## Scope (MVP - Phase 1)
-- **Modalities**: Text + Metadata + Images
-- **Platforms**: Minimum 2 adapters (Reddit + Twitter/X)
-- **Analysis**: Gemini-powered multimodal reasoning
-- **Output**: Risk score + explainable report + fact-checks with citations
+SafetyCheck analyzes social media posts for scams, misleading claims, and harmful content using Google's Gemini AI. It provides explainable risk assessments with fact-checked citations.
 
-## Non-Goals
-- Private or encrypted content analysis
-- User profiling or surveillance
-- Platform ToS violations
-- PII collection or storage
+## ✨ Features
 
-## Tech Stack
-- **Backend**: Python 3.11+ (FastAPI)
-- **Frontend**: Next.js 14+ with TypeScript
-- **AI**: Google Gemini API (multimodal)
-- **Cache**: Redis (optional for MVP)
+- **🔍 Multi-Platform**: Analyze Reddit, Twitter, and pasted text
+- **🖼️ Multimodal**: Evaluates text, images, and metadata
+- **📊 Risk Scoring**: Clear levels from Minimal to Critical
+- **✅ Fact-Checking**: Verifies claims with citations
+- **⚡ Fast & Cached**: Results cached to reduce costs
+- **📱 Responsive**: Works on mobile, tablet, desktop
 
-## Quick Start
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- [Gemini API key](https://makersuite.google.com/app/apikey)
 
 ### Backend
+
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env with your API keys
-python src/main.py
+# Edit .env and add GEMINI_API_KEY
+
+uvicorn src.main:app --reload
+# → http://localhost:8000
 ```
 
 ### Frontend
+
 ```bash
 cd frontend
-pnpm install
+npm install
 cp .env.local.example .env.local
-# Edit .env.local with backend URL
-pnpm dev
+
+npm run dev
+# → http://localhost:3000
 ```
 
-## Project Status
-- [x] Day 0: Setup
-- [ ] Day 1: Architecture & Contracts
-- [ ] Day 2: Platform Adapters
-- [ ] Day 3: Media Pipeline
-- [ ] Day 4: Gemini Analysis
-- [ ] Day 5: Frontend UI
-- [ ] Day 6: Integration & Caching
-- [ ] Day 7: Testing & Deploy
+### Quick Test
 
-## License
-MIT (or specify your license)
+1. Open http://localhost:3000
+2. Paste: `URGENT! Send Bitcoin for guaranteed 10x returns!`
+3. Click "Analyze Content"
+4. View risk assessment
+
+## 📖 Documentation
+
+- [Architecture](docs/architecture.md)
+- [API Reference](docs/api.md)
+- [Deployment](docs/deployment.md)
+- [Troubleshooting](docs/troubleshooting.md)
+
+## 🧪 Testing
+
+```bash
+# Backend
+cd backend && pytest
+
+# Frontend
+cd frontend && npm run build
+```
+
+## 📊 Performance
+
+| Metric | Target |
+|--------|--------|
+| Analysis latency | <5s |
+| Cache hit latency | <100ms |
+| Cost per analysis | <$0.01 |
+
+## ⚠️ Disclaimer
+
+SafetyCheck is a decision-support tool. Always exercise your own judgment.
+
+## 📝 License
+
+MIT License
