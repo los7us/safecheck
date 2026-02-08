@@ -23,7 +23,7 @@ Performance
 | Cache hit latency | <100ms |
 | Cost per analysis | <$0.01 |
 
-##Disclaimer
+Disclaimer
 
 SafetyCheck is a decision-support tool. Always exercise your own judgment.
 
