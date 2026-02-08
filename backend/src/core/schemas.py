@@ -368,6 +368,90 @@ class SafetyAnalysisResult(BaseModel):
 # SCHEMA VERSION REGISTRY
 # ============================================================================
 
+
+# ============================================================================
+# API SCHEMAS
+# ============================================================================
+
+class AnalysisRequest(BaseModel):
+    """Request with strict validation"""
+    
+    url: Optional[str] = Field(None, max_length=2000)
+    text: Optional[str] = Field(None, max_length=50000)  # ~50KB
+    platform_hint: Optional[str] = Field(None, max_length=50)
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v):
+        if v is None:
+            return v
+        
+        # Check URL scheme
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        
+        # Reject potentially dangerous schemes
+        dangerous_schemes = ['file://', 'javascript:', 'data:', 'vbscript:']
+        if any(v.lower().startswith(scheme) for scheme in dangerous_schemes):
+            raise ValueError('Invalid URL scheme')
+        
+        # Reject localhost/internal IPs (SSRF protection)
+        from urllib.parse import urlparse
+        parsed = urlparse(v)
+        
+        # Block localhost (basic check)
+        if parsed.hostname in ['localhost', '127.0.0.1', '0.0.0.0']:
+            raise ValueError('Cannot analyze localhost URLs')
+        
+        # Block private IP ranges (basic check)
+        if parsed.hostname and (
+            parsed.hostname.startswith(('10.', '172.16.', '192.168.')) or
+            parsed.hostname.startswith('172.') and 16 <= int(parsed.hostname.split('.')[1]) <= 31
+        ):
+            # Slightly improved check for 172.16-31
+            raise ValueError('Cannot analyze private IP addresses')
+            
+        return v
+    
+    @field_validator('text')
+    @classmethod
+    def validate_text(cls, v):
+        if v is None:
+            return v
+        
+        # Reject empty text
+        if not v.strip():
+            raise ValueError('Text cannot be empty')
+        
+        # Check for null bytes
+        if '\x00' in v:
+            raise ValueError('Invalid characters in text')
+        
+        return v
+    
+    @field_validator('platform_hint')
+    @classmethod
+    def validate_platform(cls, v):
+        if v is None:
+            return v
+        
+        allowed_platforms = ['reddit', 'twitter', 'facebook', 'instagram', 'tiktok', 'youtube']
+        if v.lower() not in allowed_platforms:
+            # For robust production, perhaps allow 'unknown' or warn log, 
+            # but strict validation is safer.
+            # I'll allow 'unknown' if it's explicitly passed, or reject garbage.
+            raise ValueError(f'Platform must be one of: {", ".join(allowed_platforms)}')
+        
+        return v.lower()
+
+
+class AnalysisResponse(BaseModel):
+    """Response from analysis endpoint"""
+    success: bool
+    data: Optional[SafetyAnalysisResult] = None
+    error: Optional[str] = None
+    cached: bool = False
+
 SCHEMA_VERSION = "1.0.0"
 
 # Export all schemas
@@ -390,6 +474,9 @@ __all__ = [
     "SafetyAnalysisResult",
     "FactCheck",
     "Citation",
+    # API
+    "AnalysisRequest",
+    "AnalysisResponse",
     # Version
     "SCHEMA_VERSION",
 ]

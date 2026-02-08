@@ -10,8 +10,8 @@
 ### Security
 - [ ] API keys in env vars
 - [ ] .env in .gitignore
-- [ ] CORS configured
-- [ ] Rate limiting enabled
+- [x] CORS configured
+- [x] Rate limiting enabled
 
 ### Configuration
 - [ ] Production .env ready

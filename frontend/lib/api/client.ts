@@ -5,6 +5,7 @@
 import type { SafetyAnalysisResult } from '../schemas';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'demo-key-12345';
 
 export class APIError extends Error {
   constructor(
@@ -31,9 +32,11 @@ export interface AnalysisResponse {
 
 export class APIClient {
   private baseUrl: string;
+  private apiKey: string;
   
-  constructor(baseUrl: string = API_BASE_URL) {
+  constructor(baseUrl: string = API_BASE_URL, apiKey: string = API_KEY) {
     this.baseUrl = baseUrl;
+    this.apiKey = apiKey;
   }
   
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
@@ -42,6 +45,7 @@ export class APIClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': this.apiKey,
         },
         body: JSON.stringify(request),
       });

@@ -23,6 +23,9 @@ out/
 .env
 .env.local
 .env.*.local
+*.key
+*.pem
+secrets/
 
 # IDE
 .vscode/

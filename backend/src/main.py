@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 
-from src.core.schemas import SafetyAnalysisResult
+from src.core.schemas import SafetyAnalysisResult, AnalysisRequest, AnalysisResponse
 from src.services.ingestion_pipeline import IngestionPipeline
 from src.services.gemini_service import GeminiService, GeminiRateLimitError
 from src.adapters.registry import adapter_registry
@@ -23,24 +23,28 @@ from src.adapters.reddit_adapter import RedditAdapter
 from src.adapters.twitter_adapter import TwitterAdapter
 from src.cache.result_cache import ResultCache
 from src.monitoring.metrics import MetricsTracker
+from starlette.middleware.base import BaseHTTPMiddleware
 
 load_dotenv()
 
-
-# API Request/Response Models
-class AnalysisRequest(BaseModel):
-    """Request to analyze content"""
-    url: Optional[str] = None
-    text: Optional[str] = None
-    platform_hint: Optional[str] = None
-
-
-class AnalysisResponse(BaseModel):
-    """Response from analysis endpoint"""
-    success: bool
-    data: Optional[SafetyAnalysisResult] = None
-    error: Optional[str] = None
-    cached: bool = False
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Limit request body size"""
+    
+    def __init__(self, app, max_size: int = 1024 * 1024):  # 1MB default
+        super().__init__(app)
+        self.max_size = max_size
+    
+    async def dispatch(self, request: Request, call_next):
+        # Check content length
+        content_length = request.headers.get('content-length')
+        
+        if content_length and int(content_length) > self.max_size:
+            return JSONResponse(
+                status_code=413,
+                content={"success": False, "error": f"Request body too large (max {self.max_size} bytes)"}
+            )
+        
+        return await call_next(request)
 
 
 # Global instances
@@ -50,12 +54,17 @@ result_cache: Optional[ResultCache] = None
 metrics: Optional[MetricsTracker] = None
 
 
+from src.utils.logging import setup_logging
+
+# Initialize logging
+logger = setup_logging()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     global pipeline, gemini_service, result_cache, metrics
     
-    print("Starting SafetyCheck API...")
+    logger.info("Starting SafetyCheck API...")
     
     # Initialize media cache
     media_cache_dir = Path(os.getenv("MEDIA_CACHE_DIR", "./media_cache"))
@@ -96,17 +105,17 @@ async def lifespan(app: FastAPI):
     })
     adapter_registry.register(twitter_adapter)
     
-    print(f"Registered {len(adapter_registry.list_platforms())} adapters")
-    print(f"Cache: {cache_type}")
-    print("SafetyCheck API ready")
+    logger.info(f"Registered {len(adapter_registry.list_platforms())} adapters")
+    logger.info(f"Cache: {cache_type}")
+    logger.info("SafetyCheck API ready")
     
     yield
     
     # Cleanup
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await pipeline.cleanup()
     await result_cache.close()
-    print("Shutdown complete")
+    logger.info("Shutdown complete")
 
 
 # Create FastAPI app
@@ -117,13 +126,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Request Size Limit
+app.add_middleware(RequestSizeLimitMiddleware, max_size=1024 * 1024)
+
+# Abuse Prevention
+from src.middleware.abuse_prevention import AbusePreventionMiddleware
+app.add_middleware(AbusePreventionMiddleware)
+
 # CORS
+# Explicitly whitelist origins
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"], # Allow all headers for now or restrict to Content-Type, Authorization, X-API-Key
 )
 
 
@@ -153,9 +172,22 @@ async def health():
     }
 
 
+from src.middleware.auth import verify_api_key
+from src.middleware.rate_limit import rate_limiter
+from fastapi import Security, Depends
+
+
 @app.post("/api/analyze", response_model=AnalysisResponse)
-async def analyze_content(request: AnalysisRequest):
+async def analyze_content(
+    request: AnalysisRequest,
+    api_key: str = Security(verify_api_key)
+):
     """Analyze content for safety risks."""
+    # Check per-key rate limit
+    allowed, reason = rate_limiter.check_rate_limit(api_key)
+    if not allowed:
+        raise HTTPException(429, f"Rate limit exceeded: {reason}")
+        
     start_time = time.time()
     
     try:
@@ -234,11 +266,27 @@ async def clear_cache():
     return {"message": "Cache cleared"}
 
 
+from src.middleware.security_headers import SecurityHeadersMiddleware
+
+# Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
+
+
 @app.exception_handler(Exception)
 async def global_handler(request: Request, exc: Exception):
+    """
+    Global exception handler.
+    CRITICAL: Never expose internal errors to users.
+    """
+    # Log full error internally (in production logs)
+    logger.error(f"INTERNAL ERROR: {exc}", exc_info=True)
+    
     return JSONResponse(
         status_code=500,
-        content={"success": False, "error": str(exc)},
+        content={
+            "success": False, 
+            "error": "An internal error occurred. Please try again later."
+        },
     )
 
 
