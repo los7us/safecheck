@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@/styles/backdrop-fallback.css";
 import { ConsentBanner } from "@/components/ui/ConsentBanner";
 
 const geistSans = Geist({

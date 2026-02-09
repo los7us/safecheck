@@ -53,6 +53,39 @@ export function AnalysisResult({
         </p>
       </div>
       
+      {/* Verification & Confidence Row */}
+      {(result.verification_status || result.confidence_score !== undefined) && (
+        <div className="flex flex-wrap gap-3">
+          {result.verification_status && result.verification_status !== 'not_applicable' && (
+            <div className={`
+              inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+              ${result.verification_status === 'verified' ? 'bg-green-100 text-green-700' : ''}
+              ${result.verification_status === 'unverified' ? 'bg-yellow-100 text-yellow-700' : ''}
+              ${result.verification_status === 'contradicted' ? 'bg-red-100 text-red-700' : ''}
+            `}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+              {result.verification_status === 'verified' && 'Claims Verified'}
+              {result.verification_status === 'unverified' && 'Claims Unverified'}
+              {result.verification_status === 'contradicted' && 'Claims Contradicted'}
+            </div>
+          )}
+          {result.confidence_score !== undefined && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+              Confidence: {Math.round(result.confidence_score * 100)}%
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* User Guidance */}
+      {result.user_guidance && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-800">
+            💡 {result.user_guidance}
+          </p>
+        </div>
+      )}
+      
       {/* Key Signals */}
       {result.key_signals && result.key_signals.length > 0 && (
         <KeySignals signals={result.key_signals} />

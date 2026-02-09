@@ -84,16 +84,13 @@ class GeminiService:
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
         
-        # Generation config for JSON output with thinking budget limit
+        # Generation config for JSON output
         self.generation_config = types.GenerateContentConfig(
             temperature=0.2,
             top_p=0.95,
             top_k=40,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
             response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(
-                thinking_budget=2048,
-            ),
         )
         
         # Tracking

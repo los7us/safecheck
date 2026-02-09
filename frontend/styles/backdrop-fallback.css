@@ -1,0 +1,23 @@
+/**
+ * Backdrop Blur Fallback
+ * 
+ * Provides fallback for browsers that don't support backdrop-filter.
+ */
+
+/* Fallback: use slightly darker overlay without blur */
+@supports not (backdrop-filter: blur(12px)) {
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    backdrop-filter: none !important;
+    background-color: rgba(0, 0, 0, 0.6) !important;
+  }
+}
+
+/* Smooth transitions for blur */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-lg {
+  transition: backdrop-filter 0.3s ease-in-out,
+              background-color 0.3s ease-in-out;
+}
