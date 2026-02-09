@@ -1,18 +1,16 @@
 """
-Image Upload Handler
+Image Upload Handler (VISION-ENABLED)
 
-Handles uploaded screenshots and converts them to CanonicalPost.
+Handles uploaded screenshots and prepares them for Gemini Vision analysis.
 
 Process:
 1. Validate image file
 2. Save to temporary location
-3. Extract text via OCR
-4. Generate image caption
-5. Create CanonicalPost with extracted content
+3. Return CanonicalPost AND image path for vision analysis
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import hashlib
 import io
 from datetime import datetime
@@ -24,10 +22,8 @@ from src.core.schemas import (
     CanonicalPost,
     PlatformName,
     MediaMetadata,
-    MediaFeatures,
     MediaType,
 )
-from src.services.image_features import ImageFeatureExtractor
 
 
 class ImageUploadException(Exception):
@@ -36,7 +32,7 @@ class ImageUploadException(Exception):
 
 
 class ImageUploadHandler:
-    """Handles screenshot uploads for analysis"""
+    """Handles screenshot uploads for vision-based analysis"""
     
     def __init__(self, upload_dir: Path, max_size_mb: int = 10):
         """
@@ -49,17 +45,17 @@ class ImageUploadHandler:
         self.upload_dir = Path(upload_dir)
         self.max_size_bytes = max_size_mb * 1024 * 1024
         self.upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.feature_extractor = ImageFeatureExtractor()
     
     async def process_upload(
         self,
         file_content: bytes,
         filename: str,
         user_context: Optional[str] = None,
-    ) -> CanonicalPost:
+    ) -> Tuple[CanonicalPost, Path]:
         """
         Process an uploaded image and create CanonicalPost.
+        
+        UPDATED: Now returns image path for Gemini Vision analysis.
         
         Args:
             file_content: Raw image bytes
@@ -67,7 +63,7 @@ class ImageUploadHandler:
             user_context: Optional user-provided context about the image
         
         Returns:
-            CanonicalPost with extracted text and image features
+            Tuple of (CanonicalPost, image_path) for vision analysis
         
         Raises:
             ImageUploadException: If processing fails
@@ -91,44 +87,35 @@ class ImageUploadHandler:
         content_hash = hashlib.sha256(file_content).hexdigest()
         upload_id = f"upload_{content_hash[:12]}"
         
-        # Save temporarily
-        temp_path = await self._save_temp_file(file_content, filename, content_hash)
+        # Save image file
+        image_path = await self._save_temp_file(file_content, filename, content_hash)
         
-        try:
-            # Extract features (OCR + caption)
-            features = await self.feature_extractor.extract_features(temp_path)
-            
-            # Build post text from OCR or context
-            post_text = self._build_post_text(features, user_context)
-            
-            # Create media metadata
-            media_metadata = MediaMetadata(
-                media_type=MediaType.IMAGE,
-                url=str(temp_path),
-                hash=content_hash,
-                width=width,
-                height=height,
-                size_bytes=len(file_content),
-            )
-            
-            # Create CanonicalPost
-            post = CanonicalPost(
-                post_id=upload_id,
-                post_text=post_text,
-                platform_name=PlatformName.UNKNOWN,
-                timestamp=datetime.utcnow(),
-                media_items=[media_metadata],
-                media_features=features,
-                adapter_version="image_upload_1.0",
-            )
-            
-            return post
+        # Build post text from user context
+        # (Gemini Vision will read text from the image directly)
+        post_text = self._build_post_text(user_context)
         
-        except Exception as e:
-            # Clean up temp file on error
-            if temp_path.exists():
-                temp_path.unlink()
-            raise ImageUploadException(f"Failed to process image: {e}")
+        # Create media metadata
+        media_metadata = MediaMetadata(
+            media_type=MediaType.IMAGE,
+            url=str(image_path),
+            hash=content_hash,
+            width=width,
+            height=height,
+            size_bytes=len(file_content),
+        )
+        
+        # Create CanonicalPost (simplified - no OCR features needed)
+        post = CanonicalPost(
+            post_id=upload_id,
+            post_text=post_text,
+            platform_name=PlatformName.UNKNOWN,
+            timestamp=datetime.utcnow(),
+            media_items=[media_metadata],
+            # No media_features - Gemini Vision will see the actual image
+            adapter_version="image_upload_vision_2.0",
+        )
+        
+        return post, image_path
     
     async def _save_temp_file(
         self,
@@ -136,7 +123,7 @@ class ImageUploadHandler:
         filename: str,
         content_hash: str,
     ) -> Path:
-        """Save uploaded file temporarily"""
+        """Save uploaded file temporarily."""
         # Get extension
         ext = Path(filename).suffix.lower()
         if not ext:
@@ -157,39 +144,16 @@ class ImageUploadHandler:
         
         return temp_path
     
-    def _build_post_text(
-        self,
-        features: MediaFeatures,
-        user_context: Optional[str],
-    ) -> str:
+    def _build_post_text(self, user_context: Optional[str]) -> str:
         """
-        Build post text from extracted features and user context.
+        Build post text from user context.
         
-        Priority:
-        1. User context
-        2. OCR text (if substantial)
-        3. Image caption
-        4. Fallback message
+        Since Gemini Vision can read text from images directly,
+        we only need user-provided context here.
         """
-        text_parts = []
-        
-        # User-provided context first
         if user_context and user_context.strip():
-            text_parts.append(user_context.strip())
-        
-        # OCR text if available
-        if features and features.ocr_text and len(features.ocr_text.strip()) > 10:
-            text_parts.append(f"[Text from image]: {features.ocr_text}")
-        
-        # Caption for context
-        if features and features.caption:
-            text_parts.append(f"[Image description]: {features.caption}")
-        
-        # Fallback if nothing extracted
-        if not text_parts:
-            return "Screenshot uploaded for analysis. Unable to extract text automatically."
-        
-        return "\n\n".join(text_parts)
+            return f"User context: {user_context.strip()}"
+        return "Screenshot uploaded for analysis"
     
     async def cleanup_old_uploads(self, max_age_hours: int = 24) -> int:
         """

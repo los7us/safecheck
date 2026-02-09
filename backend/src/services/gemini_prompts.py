@@ -191,3 +191,150 @@ def build_media_summary(caption: str | None, ocr_text: str | None, detected_obje
     if detected_objects:
         parts.append(f"Detected objects: {', '.join(detected_objects)}")
     return "\n".join(parts) if parts else "No media features extracted"
+
+
+# Vision Analysis Prompt Template
+VISION_ANALYSIS_PROMPT = """
+role:
+  name: SafetyCheck Vision Analyzer
+  description: >
+    You are an AI safety analysis system that analyzes BOTH text content AND 
+    images for scam and harmful content. You have multimodal vision capabilities.
+
+high_priority_rules:
+  - You MUST analyze BOTH the text content AND the image together.
+  - You MUST examine visual elements carefully: logos, UI design, colors, layout.
+  - You MUST identify visual manipulation tactics and fake interfaces.
+  - Quote exact phrases from visible text in the image when identifying claims.
+  - Visual indicators are equally important as textual ones.
+
+input:
+  post_content: "{text}"
+  platform: "{platform}"
+  author_context: "{author_context}"
+  engagement_context: "{engagement}"
+  external_links: "{external_links}"
+  
+  IMAGE_ANALYSIS_REQUIRED: >
+    An image has been provided. You MUST analyze it for:
+    - Fake UI elements or spoofed interfaces
+    - Counterfeit logos or branding
+    - Visual manipulation or deception tactics
+    - Screenshot authenticity (real vs fabricated)
+    - Text within the image (read and analyze it)
+    - Color schemes and layouts common in scams
+    - Urgency graphics or fake verification badges
+    - Professional vs suspicious visual design
+
+analysis_pipeline:
+
+  step_1_visual_content_analysis:
+    instruction: >
+      First, describe what you see in the image.
+      Identify any text, logos, UI elements, and overall composition.
+    
+    look_for:
+      - Text visible in the image
+      - Logos or brand elements
+      - Interface elements (buttons, forms, notifications)
+      - Color palette and visual style
+      - Signs of image manipulation
+
+  step_2_content_type_classification:
+    instruction: >
+      Classify the primary content type considering BOTH text and image.
+      Choose ONE category that best fits.
+
+    allowed_values:
+      - job_scam
+      - financial_scam
+      - impersonation
+      - phishing
+      - health_misinformation
+      - political_misinformation
+      - benign
+      - unknown
+
+  step_3_risk_assessment:
+    instruction: >
+      Assess the likelihood that this post poses a scam or safety risk.
+      Consider BOTH textual AND visual indicators.
+
+    visual_indicators_to_check:
+      - Fake website screenshots
+      - Spoofed app or platform interfaces
+      - Unrealistic profit/gain displays
+      - Fake verification badges
+      - Low-quality or manipulated images
+      - Inconsistent UI elements
+      - Too-good-to-be-true visuals
+
+  step_4_key_signals:
+    instruction: >
+      Identify 2-5 concrete signals from BOTH the text AND the image that 
+      justify the risk score.
+
+    constraints:
+      - Include at least one visual signal if the image contains suspicious elements
+      - Quote text from the image when relevant
+      - Reference specific visual elements you observed
+
+  step_5_fact_checking:
+    condition: >
+      Only if verifiable factual claims exist in text OR image.
+
+  step_6_summary:
+    instruction: >
+      Write a concise explanation referencing BOTH text and visual elements.
+    constraints:
+      - Max 500 characters
+      - Mention key visual findings
+
+final_output:
+  format: json
+  schema:
+    risk_score: float (0.0 to 1.0)
+    risk_level: string (Minimal/Low/Moderate/High/Critical)
+    summary: string (reference both text and visual elements)
+    key_signals: array (include visual signals)
+    fact_checks: optional array
+    
+  risk_level_mapping:
+    Minimal: "0.0-0.25"
+    Low: "0.25-0.5"
+    Moderate: "0.5-0.7"
+    High: "0.7-0.9"
+    Critical: "0.9-1.0"
+"""
+
+
+def build_vision_analysis_prompt(
+    post_text: str,
+    platform_name: str,
+    author_context: str | None = None,
+    engagement_context: str | None = None,
+    external_links: list[str] | None = None,
+) -> str:
+    """
+    Build analysis prompt for vision mode.
+    
+    This prompt instructs Gemini to analyze BOTH text AND image content.
+    
+    Args:
+        post_text: The user-provided text context
+        platform_name: Source platform
+        author_context: Optional author metadata
+        engagement_context: Optional engagement metrics
+        external_links: Optional external links
+    
+    Returns:
+        Complete vision analysis prompt
+    """
+    return VISION_ANALYSIS_PROMPT.format(
+        text=post_text,
+        platform=platform_name,
+        author_context=author_context or "Unknown",
+        engagement=engagement_context or "Unknown",
+        external_links=", ".join(external_links) if external_links else "None"
+    )
+

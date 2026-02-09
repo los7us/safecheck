@@ -275,9 +275,10 @@ async def analyze_image(
     api_key: str = Security(verify_api_key)
 ):
     """
-    Analyze an uploaded screenshot/image.
+    Analyze an uploaded screenshot/image using Gemini Vision.
     
-    NEW ENDPOINT - Enables screenshot analysis.
+    VISION-ENABLED: Sends image directly to Gemini Vision API
+    for multimodal analysis (text + image together).
     
     Args:
         file: Uploaded image file (PNG, JPG, etc.)
@@ -297,19 +298,21 @@ async def analyze_image(
         # Read file content
         content = await file.read()
         
-        # Process upload
-        post = await image_upload_handler.process_upload(
+        # Process upload (returns post AND image path for vision)
+        post, image_path = await image_upload_handler.process_upload(
             file_content=content,
             filename=file.filename or "upload.png",
             user_context=context,
         )
         
-        # Analyze with Gemini
-        result = await gemini_service.analyze(post)
+        # Analyze with Gemini VISION (sends actual image)
+        result = await gemini_service.analyze(post, image_path=image_path)
         
         # Record metrics
         latency = time.time() - start_time
         metrics.record_request(latency=latency, tokens=len(post.post_text) // 4)
+        
+        logger.info(f"Vision analysis completed in {latency:.2f}s")
         
         return AnalysisResponse(success=True, data=result, cached=False)
     
