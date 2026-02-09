@@ -6,7 +6,7 @@ pydantic>=2.5.3
 python-multipart>=0.0.6
 
 # AI/ML
-google-generativeai>=0.3.2
+google-genai>=1.0.0
 
 # HTTP
 httpx>=0.26.0

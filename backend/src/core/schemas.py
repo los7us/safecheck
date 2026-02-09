@@ -79,6 +79,21 @@ class ClaimVerdict(str, Enum):
     LACKS_CONTEXT = "Lacks Context"
 
 
+class VerificationStatus(str, Enum):
+    """Claim verification status"""
+    VERIFIED = "verified"
+    UNVERIFIED = "unverified"
+    CONTRADICTED = "contradicted"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class ConfidenceLabel(str, Enum):
+    """Model confidence level"""
+    LOW = "low_confidence"
+    MODERATE = "moderate_confidence"
+    HIGH = "high_confidence"
+
+
 # ============================================================================
 # MEDIA SCHEMAS
 # ============================================================================
@@ -307,62 +322,21 @@ class SafetyAnalysisResult(BaseModel):
     summary: str = Field(..., description="Concise explanation of the assessment", max_length=500)
     key_signals: List[str] = Field(..., description="2-5 specific indicators that informed the score", min_length=2, max_length=5)
     
+    # Verification & Confidence (new agent config fields)
+    verification_status: VerificationStatus = Field(default=VerificationStatus.NOT_APPLICABLE, description="Claim verification status")
+    confidence_score: float = Field(default=0.5, ge=0.0, le=1.0, description="Model self-assessed confidence")
+    confidence_label: ConfidenceLabel = Field(default=ConfidenceLabel.MODERATE, description="Confidence level")
+    user_guidance: Optional[str] = Field(None, description="Responsible advice for the user", max_length=300)
+    
     # Fact-checking (conditional)
     fact_checks: List[FactCheck] = Field(default_factory=list, description="Only populated if verifiable claims detected")
     
     # Metadata
     analysis_timestamp: datetime = Field(default_factory=datetime.utcnow)
-    model_version: str = Field(default="gemini-1.5-pro", description="Gemini model used")
-    
-    @field_validator('risk_score')
-    @classmethod
-    def risk_score_matches_level(cls, v, info):
-        """Ensure risk_level matches risk_score"""
-        if 'risk_level' in info.data:
-            level = info.data['risk_level']
-            if level == RiskLevel.MINIMAL and not (0.0 <= v < 0.25):
-                raise ValueError(f"Risk score {v} doesn't match level {level}")
-            elif level == RiskLevel.LOW and not (0.25 <= v < 0.5):
-                raise ValueError(f"Risk score {v} doesn't match level {level}")
-            elif level == RiskLevel.MODERATE and not (0.5 <= v < 0.7):
-                raise ValueError(f"Risk score {v} doesn't match level {level}")
-            elif level == RiskLevel.HIGH and not (0.7 <= v < 0.9):
-                raise ValueError(f"Risk score {v} doesn't match level {level}")
-            elif level == RiskLevel.CRITICAL and not (0.9 <= v <= 1.0):
-                raise ValueError(f"Risk score {v} doesn't match level {level}")
-        return v
+    model_version: str = Field(default="gemini-2.5-flash", description="Gemini model used")
     
     class Config:
         protected_namespaces = ()  # Allow 'model_' prefix for model_version field
-        json_schema_extra = {
-            "example": {
-                "risk_score": 0.85,
-                "risk_level": "High",
-                "summary": "This post exhibits multiple characteristics of a cryptocurrency investment scam, including unrealistic return promises and urgency tactics.",
-                "key_signals": [
-                    "Guaranteed high returns (10x in 7 days)",
-                    "Urgency framing ('Act now!')",
-                    "New account with low credibility",
-                    "External link to unverified site",
-                    "Common scam language patterns"
-                ],
-                "fact_checks": [
-                    {
-                        "claim": "Guaranteed 10x return in 7 days",
-                        "verdict": "False",
-                        "explanation": "No legitimate investment can guarantee returns.",
-                        "citations": [
-                            {
-                                "source_name": "U.S. SEC",
-                                "url": "https://www.sec.gov/investor/alerts"
-                            }
-                        ]
-                    }
-                ],
-                "analysis_timestamp": "2024-02-08T10:35:00Z",
-                "model_version": "gemini-1.5-pro"
-            }
-        }
 
 
 # ============================================================================
@@ -464,6 +438,8 @@ __all__ = [
     "AccountAgeBucket",
     "RiskLevel",
     "ClaimVerdict",
+    "VerificationStatus",
+    "ConfidenceLabel",
     # Media
     "MediaMetadata",
     "MediaFeatures",

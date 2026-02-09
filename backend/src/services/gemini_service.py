@@ -4,6 +4,8 @@ Gemini AI Service (VISION-ENABLED)
 Handles all interactions with Google's Gemini API.
 Supports both text-only and multimodal (text + image) analysis.
 
+Uses the google.genai SDK (migrated from deprecated google.generativeai).
+
 Responsibilities:
 - Format prompts from CanonicalPost
 - Call Gemini API (text or vision mode)
@@ -17,7 +19,6 @@ from typing import Optional
 from pathlib import Path
 import json
 import time
-import base64
 import io
 from datetime import datetime
 
@@ -30,6 +31,8 @@ from src.core.schemas import (
     FactCheck,
     Citation,
     ClaimVerdict,
+    VerificationStatus,
+    ConfidenceLabel,
 )
 from src.services.gemini_prompts import (
     build_analysis_prompt,
@@ -38,7 +41,10 @@ from src.services.gemini_prompts import (
     build_engagement_context,
     build_media_summary,
 )
-import google.generativeai as genai
+
+# New SDK
+from google import genai
+from google.genai import types
 
 
 class GeminiServiceException(Exception):
@@ -67,7 +73,7 @@ class GeminiService:
     # Maximum image dimension for vision API (controls cost)
     MAX_IMAGE_DIMENSION = 1024
     
-    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
         """
         Initialize Gemini service.
         
@@ -75,21 +81,19 @@ class GeminiService:
             api_key: Gemini API key
             model_name: Model to use (must support vision for image analysis)
         """
-        genai.configure(api_key=api_key)
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
         
-        # Configure generation parameters
-        generation_config = genai.GenerationConfig(
-            temperature=0.3,
+        # Generation config for JSON output with thinking budget limit
+        self.generation_config = types.GenerateContentConfig(
+            temperature=0.2,
             top_p=0.95,
             top_k=40,
-            max_output_tokens=8192,
+            max_output_tokens=4096,
             response_mime_type="application/json",
-        )
-        
-        self.model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=generation_config,
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=2048,
+            ),
         )
         
         # Tracking
@@ -97,6 +101,8 @@ class GeminiService:
         self.vision_requests = 0
         self.total_tokens = 0
         self.total_latency = 0.0
+        
+        print(f"GeminiService initialized: model={model_name}")
     
     async def analyze(
         self, 
@@ -107,8 +113,6 @@ class GeminiService:
         """
         Analyze a post for safety risks.
         
-        Supports vision analysis when image_path is provided.
-        
         Args:
             canonical_post: Normalized post data
             image_path: Optional path to image for vision analysis
@@ -116,23 +120,16 @@ class GeminiService:
         
         Returns:
             SafetyAnalysisResult
-        
-        Raises:
-            GeminiServiceException: If analysis fails
         """
-        # Determine if using vision mode
         use_vision = image_path is not None and image_path.exists()
         
         if use_vision:
             return await self._analyze_with_vision(
-                canonical_post, 
-                image_path, 
-                max_retries
+                canonical_post, image_path, max_retries
             )
         else:
             return await self._analyze_text_only(
-                canonical_post, 
-                max_retries
+                canonical_post, max_retries
             )
     
     async def _analyze_text_only(
@@ -140,21 +137,23 @@ class GeminiService:
         canonical_post: CanonicalPost,
         max_retries: int
     ) -> SafetyAnalysisResult:
-        """Text-only analysis (existing functionality)."""
+        """Text-only analysis."""
         prompt = self._build_prompt_from_post(canonical_post)
         
         for attempt in range(max_retries + 1):
             try:
                 start_time = time.time()
-                response = await self._call_gemini_text(prompt)
+                response = await self._call_gemini(prompt)
                 latency = time.time() - start_time
                 
                 result = self._parse_response(response)
                 self._update_metrics(latency, response, vision=False)
                 
+                print(f"Analysis complete in {latency:.1f}s: risk={result.risk_level.value}")
                 return result
                 
             except (json.JSONDecodeError, ValueError) as e:
+                print(f"Parse error attempt {attempt + 1}: {e}")
                 if attempt < max_retries:
                     continue
                 raise GeminiParseError(
@@ -169,30 +168,25 @@ class GeminiService:
         image_path: Path,
         max_retries: int
     ) -> SafetyAnalysisResult:
-        """
-        Vision-enhanced analysis.
-        
-        Sends image directly to Gemini Vision API.
-        """
-        # Build vision prompt
+        """Vision-enhanced analysis."""
         prompt = self._build_vision_prompt_from_post(canonical_post)
-        
-        # Load and resize image
-        image_data = self._load_and_resize_image(image_path)
+        image = self._load_and_resize_image(image_path)
         
         for attempt in range(max_retries + 1):
             try:
                 start_time = time.time()
-                response = await self._call_gemini_vision(prompt, image_data)
+                response = await self._call_gemini(prompt, image=image)
                 latency = time.time() - start_time
                 
                 result = self._parse_response(response)
                 result.model_version = f"{self.model_name}-vision"
                 self._update_metrics(latency, response, vision=True)
                 
+                print(f"Vision analysis complete in {latency:.1f}s: risk={result.risk_level.value}")
                 return result
                 
             except (json.JSONDecodeError, ValueError) as e:
+                print(f"Vision parse error attempt {attempt + 1}: {e}")
                 if attempt < max_retries:
                     continue
                 raise GeminiParseError(
@@ -201,23 +195,16 @@ class GeminiService:
         
         raise GeminiServiceException("Unexpected retry loop exit")
     
-    def _load_and_resize_image(self, image_path: Path) -> dict:
+    def _load_and_resize_image(self, image_path: Path) -> Image.Image:
         """
         Load image, resize if needed, and prepare for Gemini Vision API.
-        
-        Resizes to max 1024px on longest side to control API costs
-        while preserving important visual details.
-        
-        Returns:
-            Dict with PIL Image object for Gemini SDK
+        Resizes to max 1024px on longest side to control API costs.
         """
         try:
-            # Open image
             image = Image.open(image_path)
             
-            # Convert to RGB if necessary (remove alpha channel)
+            # Convert to RGB if necessary
             if image.mode in ('RGBA', 'LA', 'P'):
-                # Create white background for transparency
                 background = Image.new('RGB', image.size, (255, 255, 255))
                 if image.mode == 'P':
                     image = image.convert('RGBA')
@@ -237,57 +224,43 @@ class GeminiService:
                 image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 print(f"Resized image from {width}x{height} to {new_width}x{new_height}")
             
-            return {"pil_image": image}
+            return image
             
         except Exception as e:
             raise GeminiServiceException(f"Failed to load image: {e}")
     
-    async def _call_gemini_text(self, prompt: str) -> str:
-        """Text-only API call."""
-        try:
-            response = await self.model.generate_content_async(prompt)
-            
-            if response.prompt_feedback.block_reason:
-                raise GeminiServiceException(
-                    f"Prompt blocked: {response.prompt_feedback.block_reason}"
-                )
-            
-            return response.text
-            
-        except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg:
-                raise GeminiRateLimitError(f"Gemini API rate limit exceeded: {error_msg}")
-            raise GeminiAPIError(f"Gemini API call failed: {e}")
-    
-    async def _call_gemini_vision(self, prompt: str, image_data: dict) -> str:
+    async def _call_gemini(self, prompt: str, image: Optional[Image.Image] = None) -> str:
         """
-        Vision API call.
-        
-        Sends both text prompt and image to Gemini.
+        Unified API call for both text and vision modes.
         """
         try:
-            # Get PIL image
-            pil_image = image_data["pil_image"]
+            # Build contents
+            contents = [prompt, image] if image else prompt
             
-            # Generate content with image (Gemini SDK handles the image directly)
-            response = await self.model.generate_content_async([prompt, pil_image])
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=self.generation_config,
+            )
             
-            if response.prompt_feedback.block_reason:
-                raise GeminiServiceException(
-                    f"Prompt blocked: {response.prompt_feedback.block_reason}"
-                )
+            # Check for safety blocks
+            if response.candidates and response.candidates[0].finish_reason:
+                finish_reason = str(response.candidates[0].finish_reason)
+                if "SAFETY" in finish_reason.upper():
+                    raise GeminiServiceException("Content blocked by safety filters")
             
             if not response.text:
-                raise GeminiServiceException("Empty response from Gemini Vision")
+                raise GeminiServiceException("Empty response from Gemini")
             
             return response.text
             
+        except GeminiServiceException:
+            raise
         except Exception as e:
             error_msg = str(e)
-            if "429" in error_msg:
-                raise GeminiRateLimitError(f"Gemini Vision rate limit exceeded: {error_msg}")
-            raise GeminiAPIError(f"Gemini Vision API call failed: {e}")
+            if "429" in error_msg or "quota" in error_msg.lower():
+                raise GeminiRateLimitError(f"Gemini API rate limit exceeded: {error_msg}")
+            raise GeminiAPIError(f"Gemini API call failed: {e}")
     
     def _build_prompt_from_post(self, post: CanonicalPost) -> str:
         """Convert CanonicalPost to text-only analysis prompt."""
@@ -354,6 +327,7 @@ class GeminiService:
     def _parse_response(self, response_text: str) -> SafetyAnalysisResult:
         """Parse and validate Gemini response."""
         text = response_text.strip()
+        # Strip markdown code fences if present
         if text.startswith("```json"):
             text = text[7:]
         if text.startswith("```"):
@@ -362,20 +336,25 @@ class GeminiService:
             text = text[:-3]
         text = text.strip()
         
-        print(f"DEBUG: Gemini raw response: {text[:500]}...")
         data = json.loads(text)
         
-        # Build fact checks
+        # Build fact checks (graceful fallback)
         fact_checks = []
         for fc_data in data.get("fact_checks", []):
-            citations = [
-                Citation(
-                    source_name=c["source_name"],
-                    url=c["url"],
-                    excerpt=c.get("excerpt")
-                )
-                for c in fc_data.get("citations", [])
-            ]
+            citations = []
+            for c in fc_data.get("citations", []):
+                try:
+                    citations.append(Citation(
+                        source_name=c.get("source_name", "Unknown"),
+                        url=c.get("url", "https://example.com"),
+                        excerpt=c.get("excerpt")
+                    ))
+                except Exception:
+                    continue
+            
+            if not citations:
+                continue
+                
             try:
                 fact_checks.append(FactCheck(
                     claim=fc_data.get("claim", fc_data.get("claim_text", "Unknown Claim")),
@@ -383,15 +362,88 @@ class GeminiService:
                     explanation=fc_data["explanation"],
                     citations=citations
                 ))
-            except KeyError as e:
-                print(f"ERROR: Missing key in fact check data: {e}. Data: {fc_data}")
+            except (KeyError, ValueError) as e:
+                print(f"Skipping malformed fact check: {e}")
                 continue
         
+        # Parse verification status (new field, with fallback)
+        verification_status = VerificationStatus.NOT_APPLICABLE
+        raw_vs = data.get("verification_status")
+        if raw_vs:
+            try:
+                verification_status = VerificationStatus(raw_vs)
+            except ValueError:
+                pass
+        
+        # Parse confidence (new fields, with fallback)
+        confidence_score = data.get("confidence_score", 0.5)
+        if isinstance(confidence_score, dict):
+            confidence_score = confidence_score.get("score", 0.5)
+        confidence_score = max(0.0, min(1.0, float(confidence_score)))
+        
+        confidence_label = ConfidenceLabel.MODERATE
+        raw_cl = data.get("confidence_label")
+        if isinstance(raw_cl, dict):
+            raw_cl = raw_cl.get("label")
+        if raw_cl:
+            try:
+                confidence_label = ConfidenceLabel(raw_cl)
+            except ValueError:
+                pass
+        
+        # Parse user guidance
+        user_guidance = data.get("user_guidance")
+        if isinstance(user_guidance, dict):
+            user_guidance = user_guidance.get("text", str(user_guidance))
+        if user_guidance and len(user_guidance) > 300:
+            user_guidance = user_guidance[:297] + "..."
+        
+        # Parse risk score - handle nested format
+        risk_score = data.get("risk_score", 0.5)
+        if isinstance(risk_score, dict):
+            risk_score = risk_score.get("value", risk_score.get("score", 0.5))
+        risk_score = max(0.0, min(1.0, float(risk_score)))
+        
+        # Parse risk level - handle nested format
+        risk_level_raw = data.get("risk_level", "Moderate")
+        if isinstance(risk_level_raw, dict):
+            risk_level_raw = risk_level_raw.get("value", risk_level_raw.get("label", "Moderate"))
+        
+        # Normalize risk level string  
+        risk_level_str = str(risk_level_raw).strip().capitalize()
+        # Map low/medium/high from agent config to our enum
+        level_map = {
+            "Low": "Low", "Medium": "Moderate", "Moderate": "Moderate",
+            "High": "High", "Minimal": "Minimal", "Critical": "Critical",
+        }
+        risk_level_str = level_map.get(risk_level_str, "Moderate")
+        
+        # Parse summary
+        summary = data.get("summary", data.get("analysis_summary", "Analysis complete."))
+        if isinstance(summary, dict):
+            summary = summary.get("text", str(summary))
+        
+        # Parse key signals
+        key_signals = data.get("key_signals", data.get("key_signals_detected", []))
+        if isinstance(key_signals, list):
+            # Flatten if items are dicts
+            key_signals = [
+                s.get("signal", str(s)) if isinstance(s, dict) else str(s)
+                for s in key_signals
+            ]
+        if len(key_signals) < 2:
+            key_signals = key_signals + ["Content analyzed"] * (2 - len(key_signals))
+        key_signals = key_signals[:5]
+        
         return SafetyAnalysisResult(
-            risk_score=float(data["risk_score"]),
-            risk_level=RiskLevel(data["risk_level"]),
-            summary=data["summary"],
-            key_signals=data["key_signals"],
+            risk_score=risk_score,
+            risk_level=RiskLevel(risk_level_str),
+            summary=str(summary)[:500],
+            key_signals=key_signals,
+            verification_status=verification_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            user_guidance=user_guidance,
             fact_checks=fact_checks,
             analysis_timestamp=datetime.utcnow(),
             model_version=self.model_name
@@ -405,7 +457,6 @@ class GeminiService:
         if vision:
             self.vision_requests += 1
         
-        # Token counting approximation
         self.total_tokens += len(response) // 4
     
     def get_metrics(self) -> dict:

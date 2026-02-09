@@ -61,6 +61,21 @@ export const ClaimVerdictSchema = z.enum([
 ]);
 export type ClaimVerdict = z.infer<typeof ClaimVerdictSchema>;
 
+export const VerificationStatusSchema = z.enum([
+  'verified',
+  'unverified',
+  'contradicted',
+  'not_applicable',
+]);
+export type VerificationStatus = z.infer<typeof VerificationStatusSchema>;
+
+export const ConfidenceLabelSchema = z.enum([
+  'low_confidence',
+  'moderate_confidence',
+  'high_confidence',
+]);
+export type ConfidenceLabel = z.infer<typeof ConfidenceLabelSchema>;
+
 // ============================================================================
 // MEDIA SCHEMAS
 // ============================================================================
@@ -153,9 +168,13 @@ export const SafetyAnalysisResultSchema = z.object({
   risk_level: RiskLevelSchema,
   summary: z.string().max(500),
   key_signals: z.array(z.string()).min(2).max(5),
+  verification_status: VerificationStatusSchema.default('not_applicable'),
+  confidence_score: z.number().min(0).max(1).default(0.5),
+  confidence_label: ConfidenceLabelSchema.default('moderate_confidence'),
+  user_guidance: z.string().max(300).optional().nullable(),
   fact_checks: z.array(FactCheckSchema).default([]),
   analysis_timestamp: z.string().datetime(),
-  model_version: z.string().default('gemini-1.5-pro'),
+  model_version: z.string().default('gemini-2.5-flash'),
 });
 export type SafetyAnalysisResult = z.infer<typeof SafetyAnalysisResultSchema>;
 

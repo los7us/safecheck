@@ -1,123 +1,138 @@
 """
 Gemini Analysis Prompt Templates
 
-These prompts are the core of the safety analysis system.
-
-Design Principles:
-- Deterministic and structured
-- Schema-constrained output
-- Clear role definition
-- Explicit fact-checking instructions
-- Citation requirements
-
-Do NOT modify these prompts without extensive testing.
+Agent config-driven prompt system for safety analysis.
+Implements multi-step classification flow with mandatory
+fact-check gates and confidence scoring.
 """
 
 import json
 
+
 ANALYSIS_PROMPT_TEMPLATE = """
-role:
-  name: SafetyCheck
-  description: >
-    You are an AI safety analysis system designed to assess social media posts
-    for scam and harmful content. You are a decision-support tool, not a judge.
+agent:
+  name: safety_analysis_agent
+  model: gemini-2.5-flash
+  temperature: 0.2
 
-high_priority_rules:
+role: >
+  You are an AI safety analysis agent designed to assess the risk of misinformation,
+  scams, or harmful narratives in user-generated content. You must prioritize evidence-based
+  reasoning, transparency, and uncertainty handling.
+
+global_rules:
+  - Never classify content as "false", "fabricated", or "misinformation" without explicit evidence.
+  - Sensational language alone is NOT sufficient to mark content as false.
+  - When evidence is missing or unclear, prefer "unverified" over "false".
+  - Risk assessment MUST follow claim verification, not precede it.
   - You MUST ground all analysis strictly in the provided input content.
-  - You MUST NOT introduce topics, claims, or narratives that are not explicitly present in the input.
-  - You MUST quote exact phrases from the input text when identifying claims.
-  - If a claim cannot be directly quoted from the input, it MUST NOT be analyzed or fact-checked.
-  - Behavioral scam patterns do NOT require external fact-checking.
-  - External fact-checking is ONLY for factual, real-world claims that are verifiable.
-  - If no verifiable factual claims exist, the fact_checks field MUST be omitted or empty.
+  - You MUST NOT introduce topics, claims, or narratives not explicitly present in the input.
 
-input:
-  post_content: "{text}"
-  platform: "{platform}"
+content_intake:
+  text: "{text}"
+  source_platform: "{platform}"
   media_summary: "{media_description}"
   author_context: "{author_context}"
   engagement_context: "{engagement}"
   external_links: "{external_links}"
 
-analysis_pipeline:
+classification_flow:
 
-  step_1_content_type_classification:
-    instruction: >
-      Classify the primary content type of the post.
-      Choose ONE category that best fits the content.
+  step_1_claim_detection:
+    description: >
+      Identify whether the content contains factual claims.
+      Claims include statements about real events, public figures,
+      institutions, health, finance, or breaking news.
 
-    allowed_values:
-      - job_scam
-      - financial_scam
-      - impersonation
-      - phishing
-      - health_misinformation
-      - political_misinformation
-      - benign
-      - unknown
-
-    constraints:
-      - Base your classification ONLY on the provided input text.
-      - Do NOT infer topics that are not present.
-
-  step_2_claim_extraction:
-    instruction: >
-      Extract explicit claims made in the post.
-      A claim is a statement asserting a fact about the real world
-      that could be proven true or false.
-
-    rules:
-      - Each claim MUST include a verbatim quote from the input text.
-      - Promotional language, promises, or incentives are NOT factual claims.
-      - If no factual claims exist, return an empty list.
-
-  step_3_risk_assessment:
-    instruction: >
-      Assess the likelihood that the post poses a scam or safety risk.
-
-    guidance:
-      - Use behavioral indicators such as urgency, incentives, impersonation,
-        off-platform contact, unrealistic promises, and obfuscation.
-      - Do NOT rely on external knowledge unless required for claim verification.
-      - Consider missing context as a risk amplifier.
-
-  step_4_key_signals:
-    instruction: >
-      Identify 2–5 concrete signals from the input text that justify the risk score.
-
-    constraints:
-      - Signals must directly reference observable patterns in the post.
-      - Do NOT include speculative or inferred signals.
-
-  step_5_fact_checking:
+  step_2_mandatory_fact_check_gate:
     condition: >
-      Perform this step ONLY IF extracted claims list is NOT empty
-      AND claims are factual in nature.
+      If claims are about news, public figures, health, or finance,
+      fact-checking is REQUIRED before risk scoring.
+    instructions: >
+      Conduct a credibility check using general world knowledge.
+      If no confirmation exists from major reputable outlets,
+      explicitly mark the claim as unverified.
+      Never imply falsehood when evidence is simply absent.
 
+  step_3_signal_analysis:
+    description: >
+      Analyze linguistic and contextual signals without determining truth.
+    signals:
+      - sensational_language
+      - urgency_markers
+      - emotional_manipulation
+      - lack_of_sources
+      - impersonation_or_deception
+    note: >
+      These signals influence risk perception but do NOT override
+      verification_status.
+
+  step_4_risk_classification:
     rules:
-      - Each fact-check MUST reference the exact source_quote.
-      - Do NOT introduce new claims.
-      - Cite only credible sources (government, regulators, established fact-checkers).
-      - If claims are promotional or scam-related, SKIP this step.
+      - If verification_status is verified, risk cannot be High.
+      - If verification_status is unverified, risk is capped at Medium.
+      - If verification_status is contradicted AND malicious framing exists, High risk allowed.
 
-  step_6_summary:
-    instruction: >
-      Write a concise, neutral explanation of why the post was assessed
-      at this risk level.
-
-    constraints:
-      - Do NOT restate claims that are not present.
-      - Do NOT introduce new topics.
-      - Max 500 characters.
+  step_5_model_confidence:
+    description: >
+      Provide a self-assessed confidence level for the analysis,
+      reflecting evidence strength and certainty.
 
 final_output:
   format: json
   schema:
-    risk_score: float
-    risk_level: string
-    summary: string
-    key_signals: array
-    fact_checks: optional array
+    risk_score:
+      type: float
+      range: 0.0-1.0
+      mapping:
+        Minimal: "0.0-0.24"
+        Low: "0.25-0.49"
+        Moderate: "0.50-0.69"
+        High: "0.70-0.89"
+        Critical: "0.90-1.0"
+    risk_level:
+      type: string
+      enum: [Minimal, Low, Moderate, High, Critical]
+    summary:
+      type: string
+      max_length: 500
+      style: "Neutral, non-accusatory. Distinguish between unverified and false."
+    key_signals:
+      type: array
+      min_items: 2
+      max_items: 5
+      description: "Concrete signals from the input that justify the risk score"
+    verification_status:
+      type: string
+      enum: [verified, unverified, contradicted, not_applicable]
+    confidence_score:
+      type: float
+      range: 0.0-1.0
+    confidence_label:
+      type: string
+      enum: [low_confidence, moderate_confidence, high_confidence]
+    user_guidance:
+      type: string
+      description: "Calm, responsible advice without telling the user what to believe"
+    fact_checks:
+      type: array
+      optional: true
+      condition: "Only if verifiable factual claims were detected"
+      item_schema:
+        claim: string
+        verdict: enum [True, False, Misleading, Unverifiable, "Lacks Context"]
+        explanation: string
+        citations:
+          type: array
+          item_schema:
+            source_name: string
+            url: string
+            excerpt: string (optional)
+
+style_constraints:
+  - Avoid authoritative or judgmental language.
+  - Never imply intent unless explicitly evident.
+  - Treat the output as decision-support, not a final verdict.
 """
 
 
@@ -195,22 +210,27 @@ def build_media_summary(caption: str | None, ocr_text: str | None, detected_obje
 
 # Vision Analysis Prompt Template
 VISION_ANALYSIS_PROMPT = """
-role:
-  name: SafetyCheck Vision Analyzer
-  description: >
-    You are an AI safety analysis system that analyzes BOTH text content AND 
-    images for scam and harmful content. You have multimodal vision capabilities.
+agent:
+  name: safety_analysis_agent_vision
+  model: gemini-2.5-flash
+  temperature: 0.2
 
-high_priority_rules:
+role: >
+  You are an AI safety analysis agent with multimodal vision capabilities.
+  You analyze BOTH text content AND images for scam and harmful content.
+  You must prioritize evidence-based reasoning, transparency, and uncertainty handling.
+
+global_rules:
+  - Never classify content as "false", "fabricated", or "misinformation" without explicit evidence.
+  - When evidence is missing or unclear, prefer "unverified" over "false".
+  - Risk assessment MUST follow claim verification, not precede it.
   - You MUST analyze BOTH the text content AND the image together.
-  - You MUST examine visual elements carefully: logos, UI design, colors, layout.
-  - You MUST identify visual manipulation tactics and fake interfaces.
+  - You MUST examine visual elements: logos, UI design, colors, layout.
   - Quote exact phrases from visible text in the image when identifying claims.
-  - Visual indicators are equally important as textual ones.
 
-input:
-  post_content: "{text}"
-  platform: "{platform}"
+content_intake:
+  text: "{text}"
+  source_platform: "{platform}"
   author_context: "{author_context}"
   engagement_context: "{engagement}"
   external_links: "{external_links}"
@@ -222,89 +242,97 @@ input:
     - Visual manipulation or deception tactics
     - Screenshot authenticity (real vs fabricated)
     - Text within the image (read and analyze it)
-    - Color schemes and layouts common in scams
     - Urgency graphics or fake verification badges
-    - Professional vs suspicious visual design
 
-analysis_pipeline:
+classification_flow:
 
-  step_1_visual_content_analysis:
-    instruction: >
-      First, describe what you see in the image.
-      Identify any text, logos, UI elements, and overall composition.
-    
-    look_for:
-      - Text visible in the image
-      - Logos or brand elements
-      - Interface elements (buttons, forms, notifications)
-      - Color palette and visual style
-      - Signs of image manipulation
+  step_1_visual_and_claim_detection:
+    description: >
+      First describe what you see in the image.
+      Then identify factual claims in BOTH text and image.
 
-  step_2_content_type_classification:
-    instruction: >
-      Classify the primary content type considering BOTH text and image.
-      Choose ONE category that best fits.
-
-    allowed_values:
-      - job_scam
-      - financial_scam
-      - impersonation
-      - phishing
-      - health_misinformation
-      - political_misinformation
-      - benign
-      - unknown
-
-  step_3_risk_assessment:
-    instruction: >
-      Assess the likelihood that this post poses a scam or safety risk.
-      Consider BOTH textual AND visual indicators.
-
-    visual_indicators_to_check:
-      - Fake website screenshots
-      - Spoofed app or platform interfaces
-      - Unrealistic profit/gain displays
-      - Fake verification badges
-      - Low-quality or manipulated images
-      - Inconsistent UI elements
-      - Too-good-to-be-true visuals
-
-  step_4_key_signals:
-    instruction: >
-      Identify 2-5 concrete signals from BOTH the text AND the image that 
-      justify the risk score.
-
-    constraints:
-      - Include at least one visual signal if the image contains suspicious elements
-      - Quote text from the image when relevant
-      - Reference specific visual elements you observed
-
-  step_5_fact_checking:
+  step_2_mandatory_fact_check_gate:
     condition: >
-      Only if verifiable factual claims exist in text OR image.
+      If claims are about news, public figures, health, or finance,
+      fact-checking is REQUIRED before risk scoring.
+    instructions: >
+      If no confirmation exists from reputable outlets,
+      mark the claim as unverified. Never imply falsehood
+      when evidence is simply absent.
 
-  step_6_summary:
-    instruction: >
-      Write a concise explanation referencing BOTH text and visual elements.
-    constraints:
-      - Max 500 characters
-      - Mention key visual findings
+  step_3_signal_analysis:
+    description: >
+      Analyze BOTH textual AND visual signals.
+    visual_indicators:
+      - Fake website screenshots
+      - Spoofed app interfaces
+      - Unrealistic profit displays
+      - Low-quality or manipulated images
+
+  step_4_risk_classification:
+    rules:
+      - If verification_status is verified, risk cannot be High.
+      - If verification_status is unverified, risk is capped at Medium.
+      - Include at least one visual signal if suspicious elements found.
+
+  step_5_model_confidence:
+    description: >
+      Provide self-assessed confidence reflecting evidence strength.
 
 final_output:
   format: json
   schema:
-    risk_score: float (0.0 to 1.0)
-    risk_level: string (Minimal/Low/Moderate/High/Critical)
-    summary: string (reference both text and visual elements)
-    key_signals: array (include visual signals)
-    fact_checks: optional array
-    
-  risk_level_mapping:
-    Minimal: "0.0-0.25"
-    Low: "0.25-0.5"
-    Moderate: "0.5-0.7"
-    High: "0.7-0.9"
-    Critical: "0.9-1.0"
+    risk_score:
+      type: float
+      range: 0.0-1.0
+      mapping:
+        Minimal: "0.0-0.24"
+        Low: "0.25-0.49"
+        Moderate: "0.50-0.69"
+        High: "0.70-0.89"
+        Critical: "0.90-1.0"
+    risk_level:
+      type: string
+      enum: [Minimal, Low, Moderate, High, Critical]
+    summary:
+      type: string
+      max_length: 500
+      style: "Reference both text and visual elements. Neutral tone."
+    key_signals:
+      type: array
+      min_items: 2
+      max_items: 5
+      description: "Include visual signals when relevant"
+    verification_status:
+      type: string
+      enum: [verified, unverified, contradicted, not_applicable]
+    confidence_score:
+      type: float
+      range: 0.0-1.0
+    confidence_label:
+      type: string
+      enum: [low_confidence, moderate_confidence, high_confidence]
+    user_guidance:
+      type: string
+      description: "Calm, responsible advice"
+    fact_checks:
+      type: array
+      optional: true
+      item_schema:
+        claim: string
+        verdict: enum [True, False, Misleading, Unverifiable, "Lacks Context"]
+        explanation: string
+        citations:
+          type: array
+          item_schema:
+            source_name: string
+            url: string
+            excerpt: string (optional)
+
+style_constraints:
+  - Avoid authoritative or judgmental language.
+  - Never imply intent unless explicitly evident.
+  - Treat the output as decision-support, not a final verdict.
 """
 
 
@@ -337,4 +365,3 @@ def build_vision_analysis_prompt(
         engagement=engagement_context or "Unknown",
         external_links=", ".join(external_links) if external_links else "None"
     )
-
