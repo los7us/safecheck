@@ -113,7 +113,7 @@ export function AnalysisInput({ onSubmit, onSubmitImage, isLoading }: AnalysisIn
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://reddit.com/r/..."
             disabled={isLoading}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
           />
         </div>
       )}
@@ -131,7 +131,7 @@ export function AnalysisInput({ onSubmit, onSubmitImage, isLoading }: AnalysisIn
             placeholder="Paste the content you want to analyze..."
             rows={6}
             disabled={isLoading}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
           />
         </div>
       )}
@@ -162,7 +162,7 @@ export function AnalysisInput({ onSubmit, onSubmitImage, isLoading }: AnalysisIn
                 placeholder="Provide any additional context about this screenshot..."
                 rows={3}
                 disabled={isLoading}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
               />
             </div>
           )}
@@ -176,13 +176,22 @@ export function AnalysisInput({ onSubmit, onSubmitImage, isLoading }: AnalysisIn
       )}
       
       {/* Submit button */}
-      <button
-        type="submit"
-        disabled={!isValid() || isLoading}
-        className="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-      >
-        {isLoading ? 'Analyzing...' : 'Analyze Content'}
-      </button>
+      <div className="flex justify-center">
+        <button
+          type="submit"
+          disabled={!isValid() || isLoading}
+          className={`
+            px-6 py-2 text-sm font-medium rounded-full transition-all
+            ${isValid() 
+              ? 'bg-blue-600 text-white hover:bg-blue-700' 
+              : 'bg-blue-600/10 text-blue-700'
+            }
+            disabled:cursor-not-allowed
+          `}
+        >
+          {isLoading ? 'Analyzing...' : 'Analyze Content'}
+        </button>
+      </div>
     </form>
   );
 }
