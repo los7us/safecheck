@@ -1,21 +1,32 @@
 /**
  * Analysis Input Component
+ * 
+ * Supports three input modes:
+ * - URL: Paste a social media post URL
+ * - Text: Paste text content
+ * - Image: Upload a screenshot (NEW)
  */
 
 'use client';
 
 import { useState } from 'react';
-import { Link, FileText } from 'lucide-react';
+import { Link, FileText, Image as ImageIcon } from 'lucide-react';
+import ImageUpload from '@/components/ui/ImageUpload';
 
 interface AnalysisInputProps {
   onSubmit: (url?: string, text?: string) => void;
+  onSubmitImage?: (file: File, context?: string) => void;
   isLoading: boolean;
 }
 
-export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
-  const [inputType, setInputType] = useState<'url' | 'text'>('url');
+type InputType = 'url' | 'text' | 'image';
+
+export function AnalysisInput({ onSubmit, onSubmitImage, isLoading }: AnalysisInputProps) {
+  const [inputType, setInputType] = useState<InputType>('url');
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageContext, setImageContext] = useState('');
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,20 +35,27 @@ export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
       onSubmit(url.trim(), undefined);
     } else if (inputType === 'text' && text.trim()) {
       onSubmit(undefined, text.trim());
+    } else if (inputType === 'image' && imageFile && onSubmitImage) {
+      onSubmitImage(imageFile, imageContext.trim() || undefined);
     }
   };
   
-  const isValid = inputType === 'url' ? url.trim().length > 0 : text.trim().length > 0;
+  const isValid = () => {
+    if (inputType === 'url') return url.trim().length > 0;
+    if (inputType === 'text') return text.trim().length > 0;
+    if (inputType === 'image') return imageFile !== null && onSubmitImage !== undefined;
+    return false;
+  };
   
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Input type tabs */}
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
         <button
           type="button"
           onClick={() => setInputType('url')}
           className={`
-            flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md
+            flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md
             text-sm font-medium transition-colors
             ${inputType === 'url'
               ? 'bg-white text-gray-900 shadow-sm'
@@ -53,7 +71,7 @@ export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
           type="button"
           onClick={() => setInputType('text')}
           className={`
-            flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md
+            flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md
             text-sm font-medium transition-colors
             ${inputType === 'text'
               ? 'bg-white text-gray-900 shadow-sm'
@@ -64,10 +82,26 @@ export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
           <FileText className="w-4 h-4" />
           Text
         </button>
+        
+        <button
+          type="button"
+          onClick={() => setInputType('image')}
+          className={`
+            flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md
+            text-sm font-medium transition-colors
+            ${inputType === 'image'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+            }
+          `}
+        >
+          <ImageIcon className="w-4 h-4" />
+          Image
+        </button>
       </div>
       
-      {/* Input field */}
-      {inputType === 'url' ? (
+      {/* Input field - URL */}
+      {inputType === 'url' && (
         <div>
           <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
             Post or Message URL
@@ -82,7 +116,10 @@ export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
           />
         </div>
-      ) : (
+      )}
+      
+      {/* Input field - Text */}
+      {inputType === 'text' && (
         <div>
           <label htmlFor="text" className="block text-sm font-medium text-gray-700 mb-2">
             Post or Message Text
@@ -99,10 +136,49 @@ export function AnalysisInput({ onSubmit, isLoading }: AnalysisInputProps) {
         </div>
       )}
       
+      {/* Input field - Image (NEW) */}
+      {inputType === 'image' && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Screenshot
+            </label>
+            <ImageUpload
+              onImageSelected={setImageFile}
+              onClear={() => setImageFile(null)}
+              selectedFile={imageFile}
+            />
+          </div>
+          
+          {imageFile && (
+            <div>
+              <label htmlFor="imageContext" className="block text-sm font-medium text-gray-700 mb-2">
+                Additional Context (Optional)
+              </label>
+              <textarea
+                id="imageContext"
+                value={imageContext}
+                onChange={(e) => setImageContext(e.target.value)}
+                placeholder="Provide any additional context about this screenshot..."
+                rows={3}
+                disabled={isLoading}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
+              />
+            </div>
+          )}
+          
+          {!onSubmitImage && (
+            <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
+              Image upload is not yet configured. Please use URL or Text mode.
+            </p>
+          )}
+        </div>
+      )}
+      
       {/* Submit button */}
       <button
         type="submit"
-        disabled={!isValid || isLoading}
+        disabled={!isValid() || isLoading}
         className="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? 'Analyzing...' : 'Analyze Content'}

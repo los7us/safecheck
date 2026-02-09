@@ -107,6 +107,18 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"Registered {len(adapter_registry.list_platforms())} adapters")
     logger.info(f"Cache: {cache_type}")
+    
+    # Initialize image upload handler
+    global image_upload_handler
+    upload_dir = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    from src.services.image_upload_handler import ImageUploadHandler
+    image_upload_handler = ImageUploadHandler(
+        upload_dir=upload_dir,
+        max_size_mb=int(os.getenv("MAX_IMAGE_SIZE_MB", "10"))
+    )
+    logger.info(f"Image upload handler initialized (dir: {upload_dir})")
+    
     logger.info("SafetyCheck API ready")
     
     yield
@@ -126,8 +138,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Request Size Limit
-app.add_middleware(RequestSizeLimitMiddleware, max_size=1024 * 1024)
+# Request Size Limit (15MB to support image uploads)
+app.add_middleware(RequestSizeLimitMiddleware, max_size=15 * 1024 * 1024)
 
 # Abuse Prevention
 from src.middleware.abuse_prevention import AbusePreventionMiddleware
@@ -247,6 +259,67 @@ async def analyze_content(
         traceback.print_exc()
         raise HTTPException(500, f"Analysis failed: {str(e)}")
 
+
+# Image upload imports and handler
+from fastapi import UploadFile, File, Form
+from src.services.image_upload_handler import ImageUploadHandler, ImageUploadException
+
+# Global image upload handler (initialized in lifespan)
+image_upload_handler: Optional[ImageUploadHandler] = None
+
+
+@app.post("/api/analyze/image", response_model=AnalysisResponse)
+async def analyze_image(
+    file: UploadFile = File(...),
+    context: Optional[str] = Form(None),
+    api_key: str = Security(verify_api_key)
+):
+    """
+    Analyze an uploaded screenshot/image.
+    
+    NEW ENDPOINT - Enables screenshot analysis.
+    
+    Args:
+        file: Uploaded image file (PNG, JPG, etc.)
+        context: Optional user-provided context about the image
+    
+    Returns:
+        AnalysisResponse with SafetyAnalysisResult
+    """
+    # Rate limit check
+    allowed, reason = rate_limiter.check_rate_limit(api_key)
+    if not allowed:
+        raise HTTPException(429, f"Rate limit exceeded: {reason}")
+    
+    start_time = time.time()
+    
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Process upload
+        post = await image_upload_handler.process_upload(
+            file_content=content,
+            filename=file.filename or "upload.png",
+            user_context=context,
+        )
+        
+        # Analyze with Gemini
+        result = await gemini_service.analyze(post)
+        
+        # Record metrics
+        latency = time.time() - start_time
+        metrics.record_request(latency=latency, tokens=len(post.post_text) // 4)
+        
+        return AnalysisResponse(success=True, data=result, cached=False)
+    
+    except ImageUploadException as e:
+        raise HTTPException(400, f"Image upload failed: {str(e)}")
+    except GeminiRateLimitError as e:
+        raise HTTPException(429, f"AI Service Rate Limit: {str(e)}")
+    except Exception as e:
+        logger.error(f"Image analysis error: {e}", exc_info=True)
+        raise HTTPException(500, f"Image analysis failed: {str(e)}")
 
 @app.get("/api/metrics")
 async def get_metrics():

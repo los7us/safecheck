@@ -40,3 +40,6 @@ secrets/
 
 # Media cache
 media_cache/
+
+# Image uploads
+uploads/

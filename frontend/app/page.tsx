@@ -16,6 +16,7 @@ export default function HomePage() {
     error,
     isModalOpen,
     analyze,
+    analyzeImage,
     closeModal,
   } = useAnalysis();
   
@@ -41,7 +42,7 @@ export default function HomePage() {
             Analyze Social Media Posts for Scams
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Paste a URL or text from social media to check for potential scams,
+            Paste a URL, text, or upload a screenshot from social media to check for potential scams,
             misleading claims, and safety concerns. Powered by AI.
           </p>
         </div>
@@ -50,6 +51,7 @@ export default function HomePage() {
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
           <AnalysisInput
             onSubmit={analyze}
+            onSubmitImage={analyzeImage}
             isLoading={isLoading}
           />
         </div>

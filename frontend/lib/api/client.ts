@@ -82,6 +82,52 @@ export class APIClient {
     }
     return response.json();
   }
+  
+  /**
+   * Analyze an uploaded image/screenshot.
+   * NEW METHOD - Enables screenshot analysis.
+   */
+  async analyzeImage(file: File, context?: string): Promise<AnalysisResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (context) {
+        formData.append('context', context);
+      }
+      
+      const response = await fetch(`${this.baseUrl}/api/analyze/image`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': this.apiKey,
+          // Note: Don't set Content-Type for FormData - browser sets it with boundary
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const message = errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+        throw new APIError(
+          message,
+          response.status,
+          errorData
+        );
+      }
+      
+      return await response.json();
+      
+    } catch (error) {
+      if (error instanceof APIError) {
+        throw error;
+      }
+      
+      throw new APIError(
+        `Failed to analyze image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        undefined,
+        error
+      );
+    }
+  }
 }
 
 export const apiClient = new APIClient();

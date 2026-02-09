@@ -123,14 +123,19 @@ class RedditAdapter(PlatformAdapter):
                 adapter_version=self._get_adapter_version(),
             )
         
-        except praw.exceptions.NotFound:
-            raise ContentExtractionError(f"Reddit post not found: {url}")
-        except praw.exceptions.Forbidden:
-            raise ContentExtractionError(f"Access forbidden (private/deleted): {url}")
-        except praw.exceptions.TooManyRequests:
-            raise RateLimitError("Reddit API rate limit exceeded")
+        except praw.exceptions.InvalidURL:
+            raise ContentExtractionError(f"Invalid Reddit URL: {url}")
         except Exception as e:
-            raise ContentExtractionError(f"Failed to extract Reddit content: {e}")
+            # Check for prawcore HTTP exceptions
+            error_str = str(e).lower()
+            if '404' in error_str or 'not found' in error_str:
+                raise ContentExtractionError(f"Reddit post not found: {url}")
+            elif '403' in error_str or 'forbidden' in error_str:
+                raise ContentExtractionError(f"Access forbidden (private/deleted): {url}")
+            elif '429' in error_str or 'rate limit' in error_str or 'too many' in error_str:
+                raise RateLimitError("Reddit API rate limit exceeded")
+            else:
+                raise ContentExtractionError(f"Failed to extract Reddit content: {e}")
     
     def _build_post_text(self, submission: Submission) -> str:
         """Build combined post text from title and body"""

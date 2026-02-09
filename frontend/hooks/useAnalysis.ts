@@ -2,6 +2,7 @@
  * useAnalysis Hook
  * 
  * Manages analysis state and API calls.
+ * Supports URL, text, and IMAGE analysis.
  */
 
 'use client';
@@ -76,6 +77,51 @@ export function useAnalysis() {
     }
   }, []);
   
+  /**
+   * Analyze an uploaded image/screenshot.
+   * NEW FUNCTION - Enables image upload analysis.
+   */
+  const analyzeImage = useCallback(async (file: File, context?: string) => {
+    // Reset state
+    setState({
+      isLoading: true,
+      result: null,
+      error: null,
+    });
+    
+    // Open modal
+    setIsModalOpen(true);
+    
+    try {
+      const response = await apiClient.analyzeImage(file, context);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Image analysis failed');
+      }
+      
+      setState({
+        isLoading: false,
+        result: response.data,
+        error: null,
+      });
+      
+    } catch (error) {
+      console.error('Image analysis error:', error);
+      
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      if (error instanceof APIError && error.statusCode === 429) {
+        errorMessage = 'Usage limit exceeded (free tier). Please wait a minute and try again.';
+      }
+      
+      setState({
+        isLoading: false,
+        result: null,
+        error: errorMessage,
+      });
+    }
+  }, []);
+  
   const reset = useCallback(() => {
     setState({
       isLoading: false,
@@ -92,6 +138,7 @@ export function useAnalysis() {
     ...state,
     isModalOpen,
     analyze,
+    analyzeImage,
     reset,
     closeModal,
   };
