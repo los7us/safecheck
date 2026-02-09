@@ -27,6 +27,7 @@ class PlatformName(str, Enum):
     """Supported platforms"""
     REDDIT = "reddit"
     TWITTER = "twitter"
+    TELEGRAM = "telegram"
     TIKTOK = "tiktok"
     FACEBOOK = "facebook"
     INSTAGRAM = "instagram"

@@ -26,7 +26,7 @@ export default function HomePage() {
       <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-3">
-            <ShieldCheck className="w-8 h-8 text-blue-600" />
+            <img src="/logo.png" alt="SafetyCheck Logo" className="w-12 h-12" />
             <h1 className="text-2xl font-bold text-gray-900">
               SafetyCheck
             </h1>
@@ -39,11 +39,11 @@ export default function HomePage() {
         {/* Hero Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Analyze Social Media Posts for Scams
+            Check Content for Scams & Misleading Claims
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             Paste a URL, text, or upload a screenshot from social media to check for potential scams,
-            misleading claims, and safety concerns. Powered by AI.
+            misleading claims, and safety concerns. Powered by Gemini.
           </p>
         </div>
         

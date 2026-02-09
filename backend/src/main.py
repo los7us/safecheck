@@ -105,6 +105,23 @@ async def lifespan(app: FastAPI):
     })
     adapter_registry.register(twitter_adapter)
     
+    # Telegram adapter (optional - requires API credentials)
+    telegram_api_id = os.getenv("TELEGRAM_API_ID")
+    telegram_api_hash = os.getenv("TELEGRAM_API_HASH")
+    if telegram_api_id and telegram_api_hash:
+        from src.adapters.telegram_adapter import TelegramAdapter
+        telegram_adapter = TelegramAdapter({
+            "api_id": telegram_api_id,
+            "api_hash": telegram_api_hash,
+        })
+        adapter_registry.register(telegram_adapter)
+    else:
+        # Register with preview-only mode (limited functionality)
+        from src.adapters.telegram_adapter import TelegramAdapter
+        telegram_adapter = TelegramAdapter({})
+        adapter_registry.register(telegram_adapter)
+        logger.info("Telegram adapter running in preview-only mode (no API credentials)")
+    
     logger.info(f"Registered {len(adapter_registry.list_platforms())} adapters")
     logger.info(f"Cache: {cache_type}")
     
