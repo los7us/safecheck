@@ -9,7 +9,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { X } from 'lucide-react';
 import type { SafetyAnalysisResult } from '@/lib/schemas';
 import { AnalysisResult } from './AnalysisResult';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import CelticKnotLoader from '@/components/ui/CelticKnotLoader';
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 
 interface AnalysisState {
@@ -83,8 +83,8 @@ export function AnalysisModal({
                 <div className="min-h-[300px]">
                   {isLoading && (
                     <div className="flex flex-col items-center justify-center py-12">
-                      <LoadingSpinner size="lg" />
-                      <p className="mt-4 text-sm text-gray-600">
+                      <CelticKnotLoader size={80} duration={3} showGlow />
+                      <p className="mt-5 text-sm text-gray-600">
                         Analyzing content...
                       </p>
                     </div>
