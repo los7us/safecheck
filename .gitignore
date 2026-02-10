@@ -64,3 +64,11 @@ frontend/.env.local.example
 frontend/.env.local.template
 backend/.env.production
 backend/.env.production.example
+
+# Security audit results
+backend/security_results.txt
+backend/security_v2_final.txt
+backend/security_v2_results.txt
+
+# Env templates
+backend/.env.template
