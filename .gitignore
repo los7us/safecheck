@@ -43,3 +43,24 @@ media_cache/
 
 # Image uploads
 uploads/
+
+# Documentation (except README.md)
+docs/
+DEPLOYMENT_CHECKLIST.md
+FINAL_TESTING_CHECKLIST.md
+INCIDENT_RESPONSE_PLAN.md
+KNOWN_ISSUES.md
+PRIVACY_POLICY.md
+SECRETS_ROTATION_POLICY.md
+SECURITY_AUDIT.md
+frontend/README.md
+
+# Environment files (all)
+backend/.env
+backend/.env.*
+frontend/.env.local
+frontend/.env.local.*
+frontend/.env.local.example
+frontend/.env.local.template
+backend/.env.production
+backend/.env.production.example
